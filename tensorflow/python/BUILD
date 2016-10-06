@@ -1,7 +1,10 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -81,10 +84,6 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 tf_py_test(
@@ -116,6 +115,17 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_registry",
+    srcs = ["util/kernel_registry.cc"],
+    hdrs = ["util/kernel_registry.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = [
@@ -140,6 +150,8 @@ cc_library(
         "lib/io/py_record_reader.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -153,6 +165,8 @@ cc_library(
         "lib/io/py_record_writer.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -630,6 +644,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "sdca_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -1080,6 +1099,16 @@ py_library(
 )
 
 py_library(
+    name = "sdca_ops",
+    srcs = ["ops/sdca_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":sdca_ops_gen",
+    ],
+)
+
+py_library(
     name = "seq2seq",
     srcs = ["ops/seq2seq.py"],
     srcs_version = "PY2AND3",
@@ -1173,6 +1202,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":script_ops",
+        ":sdca_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -1479,6 +1509,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_test",
+    size = "large",
+    srcs = ["ops/nn_fused_batchnorm_test.py"],
+    additional_deps = [
+        ":framework_test_lib",
+        ":lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
     name = "nn_test",
     size = "medium",
     srcs = ["ops/nn_test.py"],
@@ -1537,6 +1578,7 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
+        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
@@ -1562,7 +1604,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
@@ -1573,6 +1618,19 @@ py_test(
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",
@@ -1746,17 +1804,18 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
-        "platform/numpy.i",
         "training/server_lib.i",
+        "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":cpp_shape_inference",
+        ":kernel_registry",
         ":numpy_lib",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
-        ":cpp_shape_inference",
         ":python_op_gen",
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
@@ -1966,6 +2025,26 @@ py_test(
     deps = [
         ":extra_py_tests_deps",
         ":training",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "basic_session_run_hooks_test",
+    size = "small",
+    srcs = ["training/basic_session_run_hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "monitored_session_test",
+    size = "small",
+    srcs = ["training/monitored_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )

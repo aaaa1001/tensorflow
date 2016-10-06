@@ -213,7 +213,7 @@ def quantize_weight_rounded(input_node):
   # Currently, the parameter FLAGS.bitdepth is used to compute the
   # number of buckets as 1 << FLAGS.bitdepth, meaning the number of
   # buckets can only be a power of 2.
-  # This could be fixed by intorducing a new parameter, num_buckets,
+  # This could be fixed by introducing a new parameter, num_buckets,
   # which would allow for more flexibility in chosing the right model
   # size/accuracy tradeoff. But I didn't want to add more parameters
   # to this script than absolutely necessary.
@@ -981,7 +981,7 @@ def main(unused_args):
     return -1
 
   tf_graph = tf.GraphDef()
-  with tf.gfile.Open(FLAGS.input, "r") as f:
+  with tf.gfile.Open(FLAGS.input, "rb") as f:
     data = f.read()
     tf_graph.ParseFromString(data)
 
@@ -993,7 +993,7 @@ def main(unused_args):
 
   output_graph = rewriter.rewrite(FLAGS.output_node_names.split(","))
 
-  f = tf.gfile.FastGFile(FLAGS.output, "w")
+  f = tf.gfile.FastGFile(FLAGS.output, "wb")
   f.write(output_graph.SerializeToString())
 
   return 0

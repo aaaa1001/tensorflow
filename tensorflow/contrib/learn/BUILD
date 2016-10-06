@@ -272,22 +272,6 @@ py_test(
 )
 
 py_test(
-    name = "early_stopping_test",
-    size = "medium",
-    srcs = ["python/learn/tests/early_stopping_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "noasan",  # http://b/28555477
-    ],
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "estimators_test",
     size = "small",
     srcs = ["python/learn/tests/estimators_test.py"],
@@ -339,18 +323,6 @@ py_test(
     name = "learn_runner_test",
     size = "small",
     srcs = ["python/learn/tests/learn_runner_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "monitored_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/monitored_session_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -424,6 +396,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/estimators/classifier_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/31032996
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -447,6 +420,7 @@ py_test(
     name = "dnn_linear_combined_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -459,7 +433,12 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31934515
+        "notap",
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -594,10 +573,6 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/nonlinear_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # http://b/29220227
-        "noasan",
-    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -610,19 +585,6 @@ py_test(
     size = "small",
     srcs = ["python/learn/tests/regression_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "saver_test",
-    size = "small",
-    srcs = ["python/learn/tests/saver_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/29604599
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -729,16 +691,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "summary_writer_cache_test",
-    size = "small",
-    srcs = ["python/learn/tests/summary_writer_cache_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
 

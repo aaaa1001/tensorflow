@@ -61,6 +61,7 @@ def module_names():
       "tf.contrib.bayesflow.stochastic_tensor",
       "tf.contrib.bayesflow.variational_inference",
       "tf.contrib.copy_graph",
+      "tf.contrib.crf",
       "tf.contrib.distributions",
       "tf.contrib.ffmpeg",
       "tf.contrib.framework",
@@ -208,6 +209,7 @@ def all_libraries(module_to_name, members, documented):
       library("contrib.bayesflow.variational_inference",
               "BayesFlow Variational Inference (contrib)",
               tf.contrib.bayesflow.variational_inference),
+      library("contrib.crf", "CRF (contrib)", tf.contrib.crf),
       library("contrib.distributions", "Statistical distributions (contrib)",
               tf.contrib.distributions),
       library("contrib.ffmpeg", "FFmpeg (contrib)", ffmpeg),
@@ -243,8 +245,10 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
 # TODO(wicke): Remove contrib.layers.relu* after shortnames are
 # disabled.  These conflict with tf.nn.relu*
 EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
-                     "tf.contrib.layers.relu",
-                     "tf.contrib.layers.relu6"])
+                     "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
+                     "tf.contrib.framework.assert_global_step",
+                     "tf.contrib.framework.get_global_step",
+                     "tf.contrib.learn.NanLossDuringTrainingError"])
 
 
 def main(unused_argv):

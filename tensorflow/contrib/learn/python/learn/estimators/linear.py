@@ -29,6 +29,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -38,6 +39,7 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -334,6 +336,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
      feature_columns=[occupation, education_x_occupation],
      optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
        example_id_column='example_id',
+       num_loss_partitions=...,
        symmetric_l2_regularization=2.0
      ))
 
@@ -371,7 +374,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                gradient_clip_norm=None,
                enable_centered_bias=None,
                _joint_weight=False,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -399,6 +403,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         incompatible with SDCAOptimizer, and requires all feature columns are
         sparse and use the 'sum' combiner.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -450,7 +458,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         model_fn=model_fn,
         model_dir=self._model_dir,
         config=config,
-        params=params)
+        params=params,
+        feature_engineering_fn=feature_engineering_fn)
 
   def get_estimator(self):
     return self._estimator
@@ -548,6 +557,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def get_variable_names(self):
     return [name for name, _ in checkpoints.list_variables(self._model_dir)]
 
+  def get_variable_value(self, name):
+    return checkpoints.load_variable(self.model_dir, name)
+
   def export(self,
              export_dir,
              input_fn=None,
@@ -556,19 +568,27 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
              signature_fn=None,
              default_batch_size=1,
              exports_to_keep=None):
-    """See BasEstimator.export."""
+    """See BaseEstimator.export."""
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    self._estimator.export(export_dir=export_dir,
-                           input_fn=input_fn or default_input_fn,
-                           input_feature_key=input_feature_key,
-                           use_deprecated_input_fn=use_deprecated_input_fn,
-                           signature_fn=signature_fn,
-                           default_batch_size=default_batch_size,
-                           exports_to_keep=exports_to_keep)
+
+    return self._estimator.export(
+        export_dir=export_dir,
+        input_fn=input_fn or default_input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        signature_fn=(
+            signature_fn or export.classification_signature_fn_with_prob),
+        prediction_key=_PROBABILITIES,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
@@ -582,6 +602,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return values
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return checkpoints.load_variable(self._model_dir,
                                      name="linear/bias_weight")
@@ -650,7 +674,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                enable_centered_bias=None,
                target_dimension=1,
                _joint_weights=False,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Construct a `LinearRegressor` estimator object.
 
     Args:
@@ -676,6 +701,10 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         store the weights. It's faster, but requires all feature columns are
         sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `LinearRegressor` estimator.
@@ -693,7 +722,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         target_dimension=target_dimension,
-        config=config)
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
 
   def _get_train_ops(self, features, targets):
     """See base class."""
@@ -726,9 +756,17 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     return "squared_loss"
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     return self.linear_weights_
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return self.linear_bias_

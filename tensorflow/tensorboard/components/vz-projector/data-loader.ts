@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateMessage, updateWarningMessage} from './async';
-import {DataPoint, DataSet, DatasetMetadata, DataSource} from './data';
+import {runAsyncTask, updateMessage} from './async';
+import {DataPoint, DataSet, DatasetMetadata, PointMetadata} from './data';
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 20;
@@ -37,29 +37,31 @@ export interface CheckpointInfo {
 
 /** Interface between the data storage and the UI. */
 export interface DataProvider {
+  /** Returns a list of run names that have embedding config files. */
+  retrieveRuns(callback: (runs: string[]) => void): void;
+
   /**
    * Returns info about the checkpoint: number of tensors, their shapes,
    * and their associated metadata files.
    */
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void;
+  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  getTensor(tensorName: string, callback: (ds: DataSource) => void);
+  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
 
   /**
    * Fetches the metadata for the specified tensor and merges it with the
    * specified data source.
    */
-  getMetadata(
-      ds: DataSource, tensorName: string,
-      callback: (stats: ColumnStats[]) => void): void;
+  retrieveMetadata(run: string, tensorName: string,
+      callback: (r: MetadataResult) => void): void;
 
   /**
    * Returns the name of the tensor that should be fetched by default.
    * Used in demo mode to load a tensor when the app starts. Returns null if no
    * default tensor exists.
    */
-  getDefaultTensor(): string;
+  getDefaultTensor(run: string, callback: (tensorName: string) => void): void;
 }
 
 /**
@@ -68,55 +70,62 @@ export interface DataProvider {
  */
 class ServerDataProvider implements DataProvider {
   /** Prefix added to the http requests when asking the server for data. */
-  static DATA_URL = 'data';
-  private checkpointInfo: CheckpointInfo;
+  static DEFAULT_ROUTE_PREFIX = 'data';
+  private routePrefix: string;
 
-  constructor(checkpointInfo: CheckpointInfo) {
-    this.checkpointInfo = checkpointInfo;
+  constructor(routePrefix: string) {
+    this.routePrefix = routePrefix;
   }
 
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void {
-    callback(this.checkpointInfo);
+  retrieveRuns(callback: (runs: string[]) => void): void {
+    d3.json(`${this.routePrefix}/runs`, (err, runs) => {
+      callback(runs);
+    });
   }
 
-  getTensor(tensorName: string, callback: (ds: DataSource) => void) {
+  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void)
+      : void {
+    d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
+      callback(checkpointInfo);
+    });
+  }
+
+  retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
     // Get the tensor.
     updateMessage('Fetching tensor values...');
     d3.text(
-        `${ServerDataProvider.DATA_URL}/tensor?name=${tensorName}`,
+        `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
         (err: Error, tsv: string) => {
           if (err) {
             console.error(err);
             return;
           }
           parseTensors(tsv).then(dataPoints => {
-            let dataSource = new DataSource();
-            dataSource.originalDataSet = new DataSet(dataPoints);
-            callback(dataSource);
+            callback(new DataSet(dataPoints));
           });
         });
   }
 
-  getMetadata(
-      ds: DataSource, tensorName: string,
-      callback: (stats: ColumnStats[]) => void) {
+  retrieveMetadata(run: string, tensorName: string,
+      callback: (r: MetadataResult) => void) {
     updateMessage('Fetching metadata...');
     d3.text(
-        `${ServerDataProvider.DATA_URL}/metadata`,
+        `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`,
         (err: Error, rawMetadata: string) => {
           if (err) {
             console.error(err);
             return;
           }
-          parseAndMergeMetadata(rawMetadata, ds.originalDataSet.points)
-              .then(columnStats => { callback(columnStats); });
+          parseMetadata(rawMetadata).then(result => callback(result));
         });
   }
 
-  getDefaultTensor() {
-    let tensorNames = Object.keys(this.checkpointInfo.tensors);
-    // Return the first tensor as default if there is only 1 tensor.
-    return tensorNames.length === 1 ? tensorNames[0] : null;
+  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
+    this.retrieveCheckpointInfo(run, checkpointInfo => {
+      let tensorNames = Object.keys(checkpointInfo.tensors);
+      // Return the first tensor as default if there is only 1 tensor.
+      callback(tensorNames.length === 1 ? tensorNames[0] : null);
+    });
   }
 }
 
@@ -124,29 +133,33 @@ class ServerDataProvider implements DataProvider {
  * Returns a data provider, depending on what is available. The detection of
  * a server backend is done by issuing an HTTP request at /data/info and seeing
  * if it returns 200 or 404.
+ *
+ * @param routePrefix The prefix to add to the url routes when asking for data
+ *     from the backend. For example, when hosted inside tensorboard, the route
+ *     is prefixed by the plugin name.
+ * @param callback Called with the data provider.
  */
-export function getDataProvider(callback: (dp: DataProvider) => void) {
-  d3.json(`${ServerDataProvider.DATA_URL}/info`, (err, checkpointInfo) => {
+export function getDataProvider(
+    routePrefix: string, callback: (dp: DataProvider) => void) {
+  if (routePrefix == null) {
+    routePrefix = ServerDataProvider.DEFAULT_ROUTE_PREFIX;
+  }
+  d3.json(`${routePrefix}/runs`, (err, runs) => {
     callback(
-        err ? new DemoDataProvider() : new ServerDataProvider(checkpointInfo));
+        err ? new DemoDataProvider() : new ServerDataProvider(routePrefix));
   });
 }
 
 export function parseRawTensors(
-    content: string, callback: (ds: DataSource) => void) {
+    content: string, callback: (ds: DataSet) => void) {
   parseTensors(content).then(data => {
-    let dataSource = new DataSource();
-    dataSource.originalDataSet = new DataSet(data);
-    callback(dataSource);
+    callback(new DataSet(data));
   });
 }
 
 export function parseRawMetadata(
-    contents: string, ds: DataSource,
-    callback: (stats: ColumnStats[]) => void) {
-  parseAndMergeMetadata(contents, ds.originalDataSet.points).then(stats => {
-    callback(stats);
-  });
+    contents: string, callback: (r: MetadataResult) => void) {
+  parseMetadata(contents).then(result => callback(result));
 }
 
 /** Parses a tsv text file. */
@@ -164,7 +177,7 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
       let dataPoint: DataPoint = {
         metadata: {},
         vector: null,
-        dataSourceIndex: data.length,
+        index: data.length,
         projections: null,
         projectedPoint: null
       };
@@ -198,31 +211,31 @@ export interface ColumnStats {
   name: string;
   isNumeric: boolean;
   tooManyUniqueValues: boolean;
-  uniqueValues?: string[];
+  uniqueEntries?: {label: string, count: number}[];
   min: number;
   max: number;
 }
 
-function parseAndMergeMetadata(
-    content: string, data: DataPoint[]): Promise<ColumnStats[]> {
+export interface MetadataResult {
+  stats: ColumnStats[];
+  metadata: PointMetadata[];
+  spriteImage?: HTMLImageElement;
+  datasetMetadata?: DatasetMetadata;
+}
+
+function parseMetadata(content: string): Promise<MetadataResult> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
-    let hasHeader = (lines.length - 1 === data.length);
-
-    // Dimension mismatch.
-    if (lines.length !== data.length && !hasHeader) {
-      updateWarningMessage(`Number of tensors (${data
-                               .length}) do not match the
-                            number of lines in metadata (${lines.length}).`);
-    }
-
+    let hasHeader = lines[0].indexOf('\t') >= 0;
+    let allMetadata: PointMetadata[] = [];
     // If the first row doesn't contain metadata keys, we assume that the values
     // are labels.
-    let columnNames: string[] = ['label'];
+    let columnNames = ['label'];
     if (hasHeader) {
       columnNames = lines[0].split('\t');
       lines = lines.slice(1);
     }
+
     let columnStats: ColumnStats[] = columnNames.map(name => {
       return {
         name: name,
@@ -232,38 +245,56 @@ function parseAndMergeMetadata(
         max: Number.NEGATIVE_INFINITY
       };
     });
-    let setOfValues = columnNames.map(() => d3.set());
-    lines.forEach((line: string, i: number) => {
+    let mapOfValues = columnNames.map(() => d3.map<number>());
+    lines.forEach((line: string) => {
       let rowValues = line.split('\t');
-      data[i].metadata = {};
+      let metadata: PointMetadata = {};
+      allMetadata.push(metadata);
       columnNames.forEach((name: string, colIndex: number) => {
         let value = rowValues[colIndex];
-        let set = setOfValues[colIndex];
+        let map = mapOfValues[colIndex];
         let stats = columnStats[colIndex];
-        data[i].metadata[name] = value;
+        // Normalize missing values.
+        value = (value === '' ? null : value);
+        metadata[name] = value;
+
+        // Skip missing values.
+        if (value == null) {
+          return;
+        }
 
         // Update stats.
         if (!stats.tooManyUniqueValues) {
-          set.add(value);
-          if (set.size() > NUM_COLORS_COLOR_MAP) {
+          if (map.has(value)) {
+            map.set(value, map.get(value) + 1);
+          } else {
+            map.set(value, 1);
+          }
+          if (map.size() > NUM_COLORS_COLOR_MAP) {
             stats.tooManyUniqueValues = true;
           }
         }
         if (isNaN(value as any)) {
           stats.isNumeric = false;
         } else {
+          metadata[name] = +value;
           stats.min = Math.min(stats.min, +value);
           stats.max = Math.max(stats.max, +value);
         }
       });
     });
     columnStats.forEach((stats, colIndex) => {
-      let set = setOfValues[colIndex];
+      let map = mapOfValues[colIndex];
       if (!stats.tooManyUniqueValues) {
-        stats.uniqueValues = set.values();
+        stats.uniqueEntries = map.entries().map(e => {
+          return {label: e.key, count: e.value};
+        });
       }
     });
-    return columnStats;
+    return {
+      stats: columnStats,
+      metadata: allMetadata
+    };
   });
 }
 
@@ -328,7 +359,12 @@ class DemoDataProvider implements DataProvider {
   /** Name of the folder where the demo datasets are stored. */
   private static DEMO_FOLDER = 'data';
 
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void {
+  retrieveRuns(callback: (runs: string[]) => void): void {
+    callback(['Demo']);
+  }
+
+  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void)
+      : void {
     let tensorsInfo: {[name: string]: TensorInfo} = {};
     for (let name in DemoDataProvider.DEMO_DATASETS) {
       if (!DemoDataProvider.DEMO_DATASETS.hasOwnProperty(name)) {
@@ -347,9 +383,12 @@ class DemoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor() { return 'SmartReply 5K'; }
+  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
+    callback('SmartReply 5K');
+  }
 
-  getTensor(tensorName: string, callback: (ds: DataSource) => void) {
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
@@ -361,20 +400,17 @@ class DemoDataProvider implements DataProvider {
         return;
       }
       parseTensors(dataString, separator).then(points => {
-        let dataSource = new DataSource();
-        dataSource.originalDataSet = new DataSet(points);
-        callback(dataSource);
+        callback(new DataSet(points));
       });
     });
   }
 
-  getMetadata(
-      ds: DataSource, tensorName: string,
-      callback: (stats: ColumnStats[]) => void) {
+  retrieveMetadata(run: string, tensorName: string,
+      callback: (r: MetadataResult) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
-    let dataSetPromise: Promise<ColumnStats[]> = null;
+    let dataSetPromise: Promise<MetadataResult> = null;
     if (demoDataSet.metadata_path) {
-      dataSetPromise = new Promise<ColumnStats[]>((resolve, reject) => {
+      dataSetPromise = new Promise<MetadataResult>((resolve, reject) => {
         updateMessage('Fetching metadata...');
         d3.text(
             `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.metadata_path}`,
@@ -384,8 +420,7 @@ class DemoDataProvider implements DataProvider {
                 reject(err);
                 return;
               }
-              resolve(parseAndMergeMetadata(
-                  rawMetadata, ds.originalDataSet.points));
+              resolve(parseMetadata(rawMetadata));
             });
       });
     }
@@ -398,9 +433,10 @@ class DemoDataProvider implements DataProvider {
 
     // Fetch the metadata and the image in parallel.
     Promise.all([dataSetPromise, spritesPromise]).then(values => {
-      ds.spriteImage = values[1];
-      ds.metadata = demoDataSet.metadata;
-      callback(values[0]);
+      let [result, spriteImage] = values;
+      result.spriteImage = spriteImage;
+      result.datasetMetadata = demoDataSet.metadata;
+      callback(result);
     });
   }
 }
